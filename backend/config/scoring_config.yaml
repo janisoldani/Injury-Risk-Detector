@@ -1,0 +1,126 @@
+# Injury Risk Detector - Scoring Configuration
+#
+# This file contains all configurable weights and thresholds for risk calculation.
+# Modify these values to tune the sensitivity of the risk scoring algorithm.
+#
+# All point values contribute to a 0-100 risk score:
+# - Green: 0-35 (training as planned)
+# - Yellow: 36-60 (modification recommended)
+# - Red: 61-100 (recovery recommended)
+
+hrv:
+  # Z-score thresholds (standard deviations below 28-day baseline)
+  severe_threshold: -1.5    # Very poor recovery indicator
+  moderate_threshold: -1.0  # Moderate concern
+  mild_threshold: -0.5      # Slight deviation
+
+  # Points added to risk score
+  severe_points: 25
+  moderate_points: 15
+  mild_points: 8
+
+rhr:
+  # Delta thresholds (bpm above 28-day baseline)
+  severe_threshold: 8.0     # Significant elevation
+  moderate_threshold: 5.0   # Moderate elevation
+  mild_threshold: 3.0       # Slight elevation
+
+  # Points added to risk score
+  severe_points: 25
+  moderate_points: 15
+  mild_points: 8
+
+sleep:
+  # Delta thresholds (minutes below baseline, negative values)
+  severe_threshold: -90.0   # 1.5 hours less than usual
+  moderate_threshold: -60.0 # 1 hour less
+  mild_threshold: -30.0     # 30 minutes less
+
+  # Points added to risk score
+  severe_points: 20
+  moderate_points: 12
+  mild_points: 5
+
+acwr:
+  # Acute:Chronic Workload Ratio thresholds
+  # Research suggests optimal range is 0.8-1.3
+  critical_threshold: 1.5   # High injury risk zone
+  elevated_threshold: 1.3   # Upper end of optimal
+  warning_threshold: 1.2    # Approaching upper limit
+  detraining_threshold: 0.8 # Risk of detraining (less relevant for injury)
+
+  # Points added to risk score
+  critical_points: 25
+  elevated_points: 15
+  warning_points: 8
+  detraining_points: 3
+
+pain:
+  # Pain score multiplier (pain_score 0-10 * multiplier)
+  points_per_level: 5
+
+  # Pain trend (change over 3 days)
+  worsening_severe_threshold: 2.0  # Increased by 2+ points
+  worsening_moderate_threshold: 0.0 # Any increase
+  worsening_severe_points: 10
+  worsening_moderate_points: 5
+
+soreness:
+  # Target muscle soreness (muscles used by planned activity)
+  target_muscle_points_per_level: 3  # soreness 0-10 * multiplier
+
+  # General/max soreness
+  general_points_per_level: 1.5
+
+readiness:
+  # Subjective readiness (0-10, lower = worse)
+  poor_threshold: 4
+  moderate_threshold: 6
+
+  poor_points: 15
+  moderate_points: 8
+
+fatigue:
+  # Subjective fatigue (0-10, higher = worse)
+  severe_threshold: 7
+  moderate_threshold: 5
+
+  severe_points: 12
+  moderate_points: 5
+
+training_load:
+  # Consecutive training days
+  consecutive_severe_threshold: 5   # 5+ days in a row
+  consecutive_moderate_threshold: 4 # 4 days
+  consecutive_mild_threshold: 3     # 3 days
+
+  consecutive_severe_points: 15
+  consecutive_moderate_points: 8
+  consecutive_mild_points: 4
+
+missing_data:
+  # Penalty for each missing data source (HRV, sleep, RHR)
+  # Uncertainty in prediction
+  points_per_missing: 3
+
+intensity_multiplier:
+  # Impact/intensity amplification of base score
+  # Final score = base_score * (1 + (impact + intensity - neutral_base) * scaling_factor)
+  neutral_base: 4
+  scaling_factor: 0.05
+
+safety_rules:
+  # R0: Acute pain / swelling (RED override)
+  r0_pain_threshold: 7
+  r0_swelling_triggers: true
+
+  # R1: Moderate pain - no impact sports
+  r1_pain_min: 5
+  r1_pain_max: 6
+
+  # R2: DOMS in target muscles
+  r2_doms_threshold: 7
+
+  # R3: Recovery markers (HRV low AND RHR elevated)
+  r3_hrv_z_threshold: -1.5
+  r3_rhr_delta_threshold: 5.0
