@@ -5,6 +5,7 @@ import SessionPlanner from './pages/SessionPlanner'
 import DataImport from './pages/DataImport'
 import History from './pages/History'
 import Profile from './pages/Profile'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="import" element={<DataImport />} />
         <Route path="history" element={<History />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )

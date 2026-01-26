@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { Calendar, Clock, Zap, AlertCircle, CheckCircle } from 'lucide-react'
 import RiskGauge from '../components/RiskGauge'
 import { getPrediction, createPlannedSession } from '../lib/api'
+import { useToast } from '../context/ToastContext'
 import type { PlannedSessionCreate, SportType, IntensityZone } from '../types/api'
 
 const sportOptions: { value: SportType; label: string; icon: string }[] = [
@@ -26,6 +27,7 @@ const intensityOptions: { value: IntensityZone; label: string; description: stri
 const durationOptions = [15, 30, 45, 60, 75, 90, 120]
 
 export default function SessionPlanner() {
+  const toast = useToast()
   const [session, setSession] = useState<PlannedSessionCreate>({
     sport_type: 'running',
     planned_duration_minutes: 45,
@@ -44,17 +46,27 @@ export default function SessionPlanner() {
   }, [session])
 
   // Real-time prediction based on planned session
-  const { data: prediction, isLoading: isPredicting } = useQuery({
+  const { data: prediction, isLoading: isPredicting, error: predictionError } = useQuery({
     queryKey: ['prediction', 'session', debouncedSession],
     queryFn: () => getPrediction(debouncedSession),
     refetchOnWindowFocus: false,
   })
 
+  // Show error toast when prediction fails
+  useEffect(() => {
+    if (predictionError) {
+      toast.error('Failed to calculate risk. Please check your connection.')
+    }
+  }, [predictionError, toast])
+
   // Save session mutation
   const saveMutation = useMutation({
     mutationFn: createPlannedSession,
     onSuccess: () => {
-      alert('Session saved successfully!')
+      toast.success('Session saved successfully!')
+    },
+    onError: () => {
+      toast.error('Failed to save session. Please try again.')
     },
   })
 

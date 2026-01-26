@@ -1,15 +1,17 @@
 import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Upload, FileCheck, AlertCircle, CheckCircle, X } from 'lucide-react'
+import { Upload, AlertCircle, CheckCircle, X } from 'lucide-react'
 import { uploadFitFile, getImportStats } from '../lib/api'
+import { useToast } from '../context/ToastContext'
 import type { ImportResult } from '../types/api'
 
 export default function DataImport() {
   const [dragActive, setDragActive] = useState(false)
   const [results, setResults] = useState<ImportResult[]>([])
   const queryClient = useQueryClient()
+  const toast = useToast()
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
     queryKey: ['import-stats'],
     queryFn: getImportStats,
   })
@@ -20,16 +22,21 @@ export default function DataImport() {
       setResults((prev) => [result, ...prev])
       queryClient.invalidateQueries({ queryKey: ['import-stats'] })
       queryClient.invalidateQueries({ queryKey: ['prediction'] })
+      if (result.success) {
+        toast.success(`Imported ${result.workouts_imported} workout(s) successfully!`)
+      }
     },
     onError: (error: Error) => {
+      const errorMessage = error.message || 'Upload failed'
+      toast.error(`Import failed: ${errorMessage}`)
       setResults((prev) => [
         {
           success: false,
-          message: error.message || 'Upload failed',
+          message: errorMessage,
           workouts_imported: 0,
           workouts_skipped: 0,
           metrics_imported: 0,
-          errors: [error.message || 'Unknown error'],
+          errors: [errorMessage],
         },
         ...prev,
       ])

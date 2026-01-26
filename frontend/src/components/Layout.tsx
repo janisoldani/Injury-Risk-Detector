@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { Activity, Calendar, Upload, History, BarChart3, User } from 'lucide-react'
+import { Activity, Calendar, Upload, History, BarChart3, User, Settings } from 'lucide-react'
 import { clsx } from 'clsx'
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/import', icon: Upload, label: 'Import' },
   { to: '/history', icon: History, label: 'History' },
   { to: '/profile', icon: User, label: 'Profile' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export default function Layout() {
