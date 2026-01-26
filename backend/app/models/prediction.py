@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -21,20 +20,20 @@ class Prediction(Base):
     risk_level: Mapped[str] = mapped_column(String(10), nullable=False)  # green, yellow, red
 
     # Explanation
-    top_factors: Mapped[dict] = mapped_column(JSONB, default=list)  # List of {name, contribution, description}
+    top_factors: Mapped[dict] = mapped_column(JSON, default=list)  # List of {name, contribution, description}
     explanation_text: Mapped[str] = mapped_column(Text, nullable=False)
-    triggered_safety_rules: Mapped[dict] = mapped_column(JSONB, default=list)
+    triggered_safety_rules: Mapped[dict] = mapped_column(JSON, default=list)
 
     # Recommendations
-    recommendation_a: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    recommendation_b: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    recommendation_a: Mapped[dict] = mapped_column(JSON, nullable=False)
+    recommendation_b: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     # SHAP data (optional, can be large)
-    shap_values: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    shap_values: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Model metadata
     model_version: Mapped[str] = mapped_column(String(50), default="heuristic_v1")
-    feature_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    feature_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

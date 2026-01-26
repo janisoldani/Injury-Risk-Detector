@@ -1,7 +1,7 @@
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, String
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import DateTime, String, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -14,7 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     sport_profile: Mapped[str] = mapped_column(String(50), default="high_training_load")
     timezone: Mapped[str] = mapped_column(String(50), default="Europe/Zurich")
-    device_sources: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    device_sources: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships

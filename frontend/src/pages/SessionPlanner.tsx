@@ -61,7 +61,7 @@ export default function SessionPlanner() {
 
   // Save session mutation
   const saveMutation = useMutation({
-    mutationFn: createPlannedSession,
+    mutationFn: (session: PlannedSessionCreate) => createPlannedSession(session),
     onSuccess: () => {
       toast.success('Session saved successfully!')
     },

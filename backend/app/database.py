@@ -7,11 +7,20 @@ from app.config import get_settings
 
 settings = get_settings()
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,
-    pool_pre_ping=True,
-)
+# SQLite needs different settings
+is_sqlite = settings.database_url.startswith("sqlite")
+
+engine_kwargs = {
+    "echo": settings.debug,
+}
+
+if not is_sqlite:
+    engine_kwargs["pool_pre_ping"] = True
+else:
+    # SQLite requires check_same_thread=False for async
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_async_engine(settings.database_url, **engine_kwargs)
 
 async_session_maker = async_sessionmaker(
     engine,

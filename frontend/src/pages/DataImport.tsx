@@ -11,13 +11,13 @@ export default function DataImport() {
   const queryClient = useQueryClient()
   const toast = useToast()
 
-  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['import-stats'],
-    queryFn: getImportStats,
+    queryFn: () => getImportStats(),
   })
 
   const uploadMutation = useMutation({
-    mutationFn: uploadFitFile,
+    mutationFn: (file: File) => uploadFitFile(file),
     onSuccess: (result) => {
       setResults((prev) => [result, ...prev])
       queryClient.invalidateQueries({ queryKey: ['import-stats'] })

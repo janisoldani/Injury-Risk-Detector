@@ -1,4 +1,4 @@
-import { AlertTriangle, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import type { FactorContribution } from '../types/api'
 
 interface FactorListProps {

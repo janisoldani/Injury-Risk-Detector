@@ -43,12 +43,12 @@ export default function Profile() {
 
   const { data: user, isLoading: userLoading, error: userError } = useQuery({
     queryKey: ['user'],
-    queryFn: getUser,
+    queryFn: () => getUser(),
   })
 
   const { data: stats } = useQuery({
     queryKey: ['import-stats'],
-    queryFn: getImportStats,
+    queryFn: () => getImportStats(),
   })
 
   useEffect(() => {

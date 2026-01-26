@@ -11,8 +11,8 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # Database
-    database_url: str = "postgresql+asyncpg://injury_risk:dev_password@localhost:5432/injury_risk_db"
+    # Database - use SQLite for development, PostgreSQL for production
+    database_url: str = "sqlite+aiosqlite:///./injury_risk.db"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     environment: Literal["development", "staging", "production"] = "development"
 
     # CORS
-    allowed_origins: str = "http://localhost:3000,http://localhost:8000"
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:8000"
 
     @property
     def cors_origins(self) -> list[str]:

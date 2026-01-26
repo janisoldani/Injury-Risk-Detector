@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { Activity, Heart, Moon } from 'lucide-react'
+import { Activity, Heart } from 'lucide-react'
 import { getWorkouts, getDailyMetrics } from '../lib/api'
 import type { SportType, IntensityZone } from '../types/api'
 

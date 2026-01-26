@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -21,7 +20,7 @@ class Symptom(Base):
     swelling: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Soreness map: {"quads": 5, "hamstrings": 3, ...}
-    soreness_map: Mapped[dict] = mapped_column(JSONB, default=dict)
+    soreness_map: Mapped[dict] = mapped_column(JSON, default=dict)
 
     # Subjective metrics
     readiness: Mapped[int] = mapped_column(Integer, default=7)  # 0-10
