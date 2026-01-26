@@ -116,3 +116,26 @@ export interface DailyMetricsResponse {
   readiness_score?: number
   stress_score?: number
 }
+
+// Sport Profile enum
+export type SportProfile =
+  | 'high_training_load'
+  | 'moderate_training_load'
+  | 'recreational'
+
+// User Response
+export interface UserResponse {
+  id: number
+  email: string
+  sport_profile: SportProfile
+  timezone: string
+  device_sources: string[]
+  created_at: string
+}
+
+// User Update
+export interface UserUpdate {
+  sport_profile?: SportProfile
+  timezone?: string
+  device_sources?: string[]
+}

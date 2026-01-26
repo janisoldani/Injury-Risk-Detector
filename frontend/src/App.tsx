@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import SessionPlanner from './pages/SessionPlanner'
 import DataImport from './pages/DataImport'
 import History from './pages/History'
+import Profile from './pages/Profile'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="planner" element={<SessionPlanner />} />
         <Route path="import" element={<DataImport />} />
         <Route path="history" element={<History />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>
   )
