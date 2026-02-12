@@ -3,7 +3,8 @@ Feature Engineering for Risk Prediction.
 
 Builds features from daily metrics, workouts, and symptoms.
 """
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -57,7 +58,7 @@ class UserFeatures:
     pain_score: int = 0
     pain_trend_3d: float = 0.0  # Trend over last 3 days
     max_soreness: int = 0
-    soreness_map: dict = None
+    soreness_map: dict = field(default_factory=dict)
     readiness: int = 7
     fatigue: int = 3
     swelling: bool = False
@@ -66,10 +67,6 @@ class UserFeatures:
     missing_hrv: bool = True
     missing_sleep: bool = True
     missing_rhr: bool = True
-
-    def __post_init__(self):
-        if self.soreness_map is None:
-            self.soreness_map = {}
 
 
 class FeatureBuilder:
@@ -86,14 +83,12 @@ class FeatureBuilder:
 
         features = UserFeatures(date=target_date)
 
-        # Get daily metrics
-        await self._add_daily_metrics(features, target_date)
-
-        # Get symptom features
-        await self._add_symptom_features(features, target_date)
-
-        # Get load features
-        await self._add_load_features(features, target_date)
+        # Parallelize database queries for better performance
+        await asyncio.gather(
+            self._add_daily_metrics(features, target_date),
+            self._add_symptom_features(features, target_date),
+            self._add_load_features(features, target_date),
+        )
 
         return features
 

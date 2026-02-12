@@ -6,6 +6,7 @@ This is the main entry point for risk evaluation.
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+from enum import Enum
 from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,72 @@ from app.services.scoring_config import ScoringConfig, get_scoring_config
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+class Severity(Enum):
+    """Severity levels for threshold evaluation."""
+    NONE = "none"
+    MILD = "mild"
+    MODERATE = "moderate"
+    SEVERE = "severe"
+
+
+@dataclass
+class ThresholdResult:
+    """Result of threshold evaluation."""
+    contribution: float = 0.0
+    severity: Severity = Severity.NONE
+    triggered: bool = False
+
+
+def evaluate_lower_threshold(
+    value: Optional[float],
+    severe_threshold: float,
+    moderate_threshold: float,
+    mild_threshold: float,
+    severe_points: float,
+    moderate_points: float,
+    mild_points: float,
+) -> ThresholdResult:
+    """
+    Evaluate a value against lower-is-worse thresholds (e.g., HRV, sleep).
+    Returns contribution and severity level.
+    """
+    if value is None:
+        return ThresholdResult()
+
+    if value < severe_threshold:
+        return ThresholdResult(severe_points, Severity.SEVERE, True)
+    elif value < moderate_threshold:
+        return ThresholdResult(moderate_points, Severity.MODERATE, True)
+    elif value < mild_threshold:
+        return ThresholdResult(mild_points, Severity.MILD, True)
+    return ThresholdResult()
+
+
+def evaluate_upper_threshold(
+    value: Optional[float],
+    severe_threshold: float,
+    moderate_threshold: float,
+    mild_threshold: float,
+    severe_points: float,
+    moderate_points: float,
+    mild_points: float,
+) -> ThresholdResult:
+    """
+    Evaluate a value against upper-is-worse thresholds (e.g., RHR, fatigue).
+    Returns contribution and severity level.
+    """
+    if value is None:
+        return ThresholdResult()
+
+    if value > severe_threshold:
+        return ThresholdResult(severe_points, Severity.SEVERE, True)
+    elif value > moderate_threshold:
+        return ThresholdResult(moderate_points, Severity.MODERATE, True)
+    elif value > mild_threshold:
+        return ThresholdResult(mild_points, Severity.MILD, True)
+    return ThresholdResult()
 
 
 @dataclass
@@ -255,36 +322,33 @@ class RiskScorer:
         score = 0.0
 
         # HRV under baseline (more negative = worse)
-        if features.hrv_z is not None:
-            if features.hrv_z < cfg.hrv.severe_threshold:
-                breakdown.hrv_contribution = cfg.hrv.severe_points
-            elif features.hrv_z < cfg.hrv.moderate_threshold:
-                breakdown.hrv_contribution = cfg.hrv.moderate_points
-            elif features.hrv_z < cfg.hrv.mild_threshold:
-                breakdown.hrv_contribution = cfg.hrv.mild_points
-            score += breakdown.hrv_contribution
+        hrv_result = evaluate_lower_threshold(
+            features.hrv_z,
+            cfg.hrv.severe_threshold, cfg.hrv.moderate_threshold, cfg.hrv.mild_threshold,
+            cfg.hrv.severe_points, cfg.hrv.moderate_points, cfg.hrv.mild_points,
+        )
+        breakdown.hrv_contribution = hrv_result.contribution
+        score += breakdown.hrv_contribution
 
-        # RHR elevated
-        if features.rhr_delta is not None:
-            if features.rhr_delta > cfg.rhr.severe_threshold:
-                breakdown.rhr_contribution = cfg.rhr.severe_points
-            elif features.rhr_delta > cfg.rhr.moderate_threshold:
-                breakdown.rhr_contribution = cfg.rhr.moderate_points
-            elif features.rhr_delta > cfg.rhr.mild_threshold:
-                breakdown.rhr_contribution = cfg.rhr.mild_points
-            score += breakdown.rhr_contribution
+        # RHR elevated (higher = worse)
+        rhr_result = evaluate_upper_threshold(
+            features.rhr_delta,
+            cfg.rhr.severe_threshold, cfg.rhr.moderate_threshold, cfg.rhr.mild_threshold,
+            cfg.rhr.severe_points, cfg.rhr.moderate_points, cfg.rhr.mild_points,
+        )
+        breakdown.rhr_contribution = rhr_result.contribution
+        score += breakdown.rhr_contribution
 
-        # Sleep deficit
-        if features.sleep_delta is not None:
-            if features.sleep_delta < cfg.sleep.severe_threshold:
-                breakdown.sleep_contribution = cfg.sleep.severe_points
-            elif features.sleep_delta < cfg.sleep.moderate_threshold:
-                breakdown.sleep_contribution = cfg.sleep.moderate_points
-            elif features.sleep_delta < cfg.sleep.mild_threshold:
-                breakdown.sleep_contribution = cfg.sleep.mild_points
-            score += breakdown.sleep_contribution
+        # Sleep deficit (more negative = worse)
+        sleep_result = evaluate_lower_threshold(
+            features.sleep_delta,
+            cfg.sleep.severe_threshold, cfg.sleep.moderate_threshold, cfg.sleep.mild_threshold,
+            cfg.sleep.severe_points, cfg.sleep.moderate_points, cfg.sleep.mild_points,
+        )
+        breakdown.sleep_contribution = sleep_result.contribution
+        score += breakdown.sleep_contribution
 
-        # ACWR (Acute:Chronic Work Ratio)
+        # ACWR (Acute:Chronic Work Ratio) - special case with 4 thresholds
         if features.acwr is not None:
             if features.acwr > cfg.acwr.critical_threshold:
                 breakdown.acwr_contribution = cfg.acwr.critical_points
@@ -294,51 +358,61 @@ class RiskScorer:
                 breakdown.acwr_contribution = cfg.acwr.warning_points
             elif features.acwr < cfg.acwr.detraining_threshold:
                 breakdown.acwr_contribution = cfg.acwr.detraining_points
-            score += breakdown.acwr_contribution
+        score += breakdown.acwr_contribution
 
-        # Pain
+        # Pain (linear scaling)
         breakdown.pain_contribution = features.pain_score * cfg.pain.points_per_level
         score += breakdown.pain_contribution
 
         # Pain trend (worsening)
-        if features.pain_trend_3d > cfg.pain.worsening_severe_threshold:
-            breakdown.pain_trend_contribution = cfg.pain.worsening_severe_points
-        elif features.pain_trend_3d > cfg.pain.worsening_moderate_threshold:
-            breakdown.pain_trend_contribution = cfg.pain.worsening_moderate_points
+        pain_trend_result = evaluate_upper_threshold(
+            features.pain_trend_3d,
+            cfg.pain.worsening_severe_threshold, cfg.pain.worsening_moderate_threshold, 0.0,
+            cfg.pain.worsening_severe_points, cfg.pain.worsening_moderate_points, 0.0,
+        )
+        breakdown.pain_trend_contribution = pain_trend_result.contribution
         score += breakdown.pain_trend_contribution
 
-        # Soreness in target muscles
+        # Soreness in target muscles (linear scaling)
         target_soreness = get_soreness_in_target_muscles(
             features.soreness_map, planned_sport, planned_gym_split
         )
         breakdown.target_soreness_contribution = target_soreness * cfg.soreness.target_muscle_points_per_level
         score += breakdown.target_soreness_contribution
 
-        # General soreness
+        # General soreness (linear scaling)
         breakdown.general_soreness_contribution = features.max_soreness * cfg.soreness.general_points_per_level
         score += breakdown.general_soreness_contribution
 
         # Readiness (low = higher risk)
-        if features.readiness < cfg.readiness.poor_threshold:
-            breakdown.readiness_contribution = cfg.readiness.poor_points
-        elif features.readiness < cfg.readiness.moderate_threshold:
-            breakdown.readiness_contribution = cfg.readiness.moderate_points
+        readiness_result = evaluate_lower_threshold(
+            features.readiness,
+            cfg.readiness.poor_threshold, cfg.readiness.moderate_threshold, 0.0,
+            cfg.readiness.poor_points, cfg.readiness.moderate_points, 0.0,
+        )
+        breakdown.readiness_contribution = readiness_result.contribution
         score += breakdown.readiness_contribution
 
         # Fatigue (high = higher risk)
-        if features.fatigue > cfg.fatigue.severe_threshold:
-            breakdown.fatigue_contribution = cfg.fatigue.severe_points
-        elif features.fatigue > cfg.fatigue.moderate_threshold:
-            breakdown.fatigue_contribution = cfg.fatigue.moderate_points
+        fatigue_result = evaluate_upper_threshold(
+            features.fatigue,
+            cfg.fatigue.severe_threshold, cfg.fatigue.moderate_threshold, 0.0,
+            cfg.fatigue.severe_points, cfg.fatigue.moderate_points, 0.0,
+        )
+        breakdown.fatigue_contribution = fatigue_result.contribution
         score += breakdown.fatigue_contribution
 
         # Consecutive training days
-        if features.consecutive_training_days >= cfg.training_load.consecutive_severe_threshold:
-            breakdown.consecutive_days_contribution = cfg.training_load.consecutive_severe_points
-        elif features.consecutive_training_days >= cfg.training_load.consecutive_moderate_threshold:
-            breakdown.consecutive_days_contribution = cfg.training_load.consecutive_moderate_points
-        elif features.consecutive_training_days >= cfg.training_load.consecutive_mild_threshold:
-            breakdown.consecutive_days_contribution = cfg.training_load.consecutive_mild_points
+        consecutive_result = evaluate_upper_threshold(
+            float(features.consecutive_training_days),
+            cfg.training_load.consecutive_severe_threshold,
+            cfg.training_load.consecutive_moderate_threshold,
+            cfg.training_load.consecutive_mild_threshold,
+            cfg.training_load.consecutive_severe_points,
+            cfg.training_load.consecutive_moderate_points,
+            cfg.training_load.consecutive_mild_points,
+        )
+        breakdown.consecutive_days_contribution = consecutive_result.contribution
         score += breakdown.consecutive_days_contribution
 
         # Store base score before multiplier
@@ -393,47 +467,44 @@ class RiskScorer:
         factors = []
 
         # HRV
-        if features.hrv_z is not None and features.hrv_z < cfg.hrv.mild_threshold:
-            if features.hrv_z < cfg.hrv.severe_threshold:
-                contribution = cfg.hrv.severe_points
-            elif features.hrv_z < cfg.hrv.moderate_threshold:
-                contribution = cfg.hrv.moderate_points
-            else:
-                contribution = cfg.hrv.mild_points
+        hrv_result = evaluate_lower_threshold(
+            features.hrv_z,
+            cfg.hrv.severe_threshold, cfg.hrv.moderate_threshold, cfg.hrv.mild_threshold,
+            cfg.hrv.severe_points, cfg.hrv.moderate_points, cfg.hrv.mild_points,
+        )
+        if hrv_result.triggered:
             factors.append({
-                "name": "HRV unter Baseline",
-                "contribution": contribution,
-                "description": f"HRV {features.hrv_z:.1f} Standardabweichungen unter deinem 28-Tage-Durchschnitt",
+                "name": "HRV below baseline",
+                "contribution": hrv_result.contribution,
+                "description": f"HRV {features.hrv_z:.1f} standard deviations below your 28-day average",
                 "value": features.hrv_z,
             })
 
         # RHR
-        if features.rhr_delta is not None and features.rhr_delta > cfg.rhr.mild_threshold:
-            if features.rhr_delta > cfg.rhr.severe_threshold:
-                contribution = cfg.rhr.severe_points
-            elif features.rhr_delta > cfg.rhr.moderate_threshold:
-                contribution = cfg.rhr.moderate_points
-            else:
-                contribution = cfg.rhr.mild_points
+        rhr_result = evaluate_upper_threshold(
+            features.rhr_delta,
+            cfg.rhr.severe_threshold, cfg.rhr.moderate_threshold, cfg.rhr.mild_threshold,
+            cfg.rhr.severe_points, cfg.rhr.moderate_points, cfg.rhr.mild_points,
+        )
+        if rhr_result.triggered:
             factors.append({
-                "name": "Ruhepuls erhöht",
-                "contribution": contribution,
-                "description": f"Ruhepuls {features.rhr_delta:.0f} bpm über deinem Durchschnitt",
+                "name": "Elevated resting heart rate",
+                "contribution": rhr_result.contribution,
+                "description": f"Resting heart rate {features.rhr_delta:.0f} bpm above your average",
                 "value": features.rhr_delta,
             })
 
         # Sleep
-        if features.sleep_delta is not None and features.sleep_delta < cfg.sleep.mild_threshold:
-            if features.sleep_delta < cfg.sleep.severe_threshold:
-                contribution = cfg.sleep.severe_points
-            elif features.sleep_delta < cfg.sleep.moderate_threshold:
-                contribution = cfg.sleep.moderate_points
-            else:
-                contribution = cfg.sleep.mild_points
+        sleep_result = evaluate_lower_threshold(
+            features.sleep_delta,
+            cfg.sleep.severe_threshold, cfg.sleep.moderate_threshold, cfg.sleep.mild_threshold,
+            cfg.sleep.severe_points, cfg.sleep.moderate_points, cfg.sleep.mild_points,
+        )
+        if sleep_result.triggered:
             factors.append({
-                "name": "Schlafdefizit",
-                "contribution": contribution,
-                "description": f"{abs(features.sleep_delta):.0f} Minuten weniger Schlaf als üblich",
+                "name": "Sleep deficit",
+                "contribution": sleep_result.contribution,
+                "description": f"{abs(features.sleep_delta):.0f} minutes less sleep than usual",
                 "value": features.sleep_delta,
             })
 
@@ -446,9 +517,9 @@ class RiskScorer:
             else:
                 contribution = cfg.acwr.warning_points
             factors.append({
-                "name": "Hohe akute Belastung",
+                "name": "High acute workload",
                 "contribution": contribution,
-                "description": f"ACWR von {features.acwr:.2f} - akute Belastung höher als chronisch",
+                "description": f"ACWR of {features.acwr:.2f} - acute load higher than chronic",
                 "value": features.acwr,
             })
 
@@ -456,9 +527,9 @@ class RiskScorer:
         if features.pain_score > 0:
             contribution = features.pain_score * cfg.pain.points_per_level
             factors.append({
-                "name": "Schmerz",
+                "name": "Pain",
                 "contribution": contribution,
-                "description": f"Schmerz-Score von {features.pain_score}/10",
+                "description": f"Pain score of {features.pain_score}/10",
                 "value": features.pain_score,
             })
 
@@ -469,37 +540,41 @@ class RiskScorer:
         if target_soreness >= 5:
             contribution = target_soreness * cfg.soreness.target_muscle_points_per_level
             factors.append({
-                "name": "Muskelkater in Zielmuskulatur",
+                "name": "Soreness in target muscles",
                 "contribution": contribution,
-                "description": f"Muskelkater {target_soreness}/10 in der für diese Aktivität beanspruchten Muskulatur",
+                "description": f"Muscle soreness {target_soreness}/10 in muscles used for this activity",
                 "value": target_soreness,
             })
 
         # Consecutive days
-        if features.consecutive_training_days >= cfg.training_load.consecutive_mild_threshold:
-            if features.consecutive_training_days >= cfg.training_load.consecutive_severe_threshold:
-                contribution = cfg.training_load.consecutive_severe_points
-            elif features.consecutive_training_days >= cfg.training_load.consecutive_moderate_threshold:
-                contribution = cfg.training_load.consecutive_moderate_points
-            else:
-                contribution = cfg.training_load.consecutive_mild_points
+        consecutive_result = evaluate_upper_threshold(
+            float(features.consecutive_training_days),
+            cfg.training_load.consecutive_severe_threshold,
+            cfg.training_load.consecutive_moderate_threshold,
+            cfg.training_load.consecutive_mild_threshold,
+            cfg.training_load.consecutive_severe_points,
+            cfg.training_load.consecutive_moderate_points,
+            cfg.training_load.consecutive_mild_points,
+        )
+        if consecutive_result.triggered:
             factors.append({
-                "name": "Aufeinanderfolgende Trainingstage",
-                "contribution": contribution,
-                "description": f"{features.consecutive_training_days} Tage Training am Stück",
+                "name": "Consecutive training days",
+                "contribution": consecutive_result.contribution,
+                "description": f"{features.consecutive_training_days} days of training in a row",
                 "value": features.consecutive_training_days,
             })
 
         # Fatigue
-        if features.fatigue > cfg.fatigue.moderate_threshold:
-            if features.fatigue > cfg.fatigue.severe_threshold:
-                contribution = cfg.fatigue.severe_points
-            else:
-                contribution = cfg.fatigue.moderate_points
+        fatigue_result = evaluate_upper_threshold(
+            features.fatigue,
+            cfg.fatigue.severe_threshold, cfg.fatigue.moderate_threshold, 0.0,
+            cfg.fatigue.severe_points, cfg.fatigue.moderate_points, 0.0,
+        )
+        if fatigue_result.triggered:
             factors.append({
-                "name": "Subjektive Ermüdung",
-                "contribution": contribution,
-                "description": f"Ermüdungs-Level von {features.fatigue}/10",
+                "name": "Subjective fatigue",
+                "contribution": fatigue_result.contribution,
+                "description": f"Fatigue level of {features.fatigue}/10",
                 "value": features.fatigue,
             })
 
@@ -515,11 +590,11 @@ class RiskScorer:
     ) -> str:
         """Generate human-readable explanation text."""
         if risk_level == RiskLevel.GREEN:
-            base = "Dein Körper zeigt gute Erholungszeichen. Training wie geplant ist möglich."
+            base = "Your body shows good recovery signs. Training as planned is possible."
         elif risk_level == RiskLevel.YELLOW:
-            base = "Einige Belastungsindikatoren sind erhöht. Eine Anpassung des Trainings wird empfohlen."
+            base = "Some stress indicators are elevated. Training modification is recommended."
         else:
-            base = "Mehrere kritische Indikatoren deuten auf hohe Belastung oder eingeschränkte Erholung hin. Erholung wird empfohlen."
+            base = "Multiple critical indicators suggest high stress or impaired recovery. Rest is recommended."
 
         # Add safety rule warnings
         if safety_eval.any_triggered:
@@ -530,7 +605,7 @@ class RiskScorer:
         # Add top factor summary
         if top_factors and len(top_factors) > 0:
             factor_names = [f["name"] for f in top_factors[:3]]
-            base += f" Hauptfaktoren: {', '.join(factor_names)}."
+            base += f" Main factors: {', '.join(factor_names)}."
 
         return base
 

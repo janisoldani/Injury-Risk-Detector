@@ -17,6 +17,7 @@ from app.schemas.enums import (
     RiskLevel,
     SportType,
 )
+from app.services.scoring_config import SafetyRulesConfig, get_scoring_config
 
 
 @dataclass
@@ -55,19 +56,26 @@ HIGH_IMPACT_SPORTS = [
 def evaluate_r0_acute_pain(
     pain_score: int,
     swelling: bool,
+    config: Optional[SafetyRulesConfig] = None,
 ) -> SafetyRuleResult:
     """
     R0 – Acute Red Flags
-    Schmerz ≥ 7/10 ODER Schwellung = ja
-    → ROT, Empfehlung: Rest / ärztlich abklären
+    Pain >= threshold OR swelling = yes
+    → RED, Recommendation: Rest / seek medical advice
     """
+    if config is None:
+        config = get_scoring_config().safety_rules
+
     result = SafetyRuleResult(
         rule_id="R0",
         rule_name="Acute Red Flags",
         description="",
     )
 
-    if pain_score >= 7 or swelling:
+    pain_triggers = pain_score >= config.r0_pain_threshold
+    swelling_triggers = swelling and config.r0_swelling_triggers
+
+    if pain_triggers or swelling_triggers:
         result.triggered = True
         result.override_risk_level = RiskLevel.RED
         result.max_allowed_intensity = IntensityZone.Z1
@@ -75,9 +83,9 @@ def evaluate_r0_acute_pain(
         result.blocked_sports = [s for s in SportType if s != SportType.WALK]
 
         if swelling:
-            result.description = "Schwellung festgestellt. Ärztliche Abklärung empfohlen. Nur leichte Bewegung (Spaziergang) falls schmerzfrei."
+            result.description = "Swelling detected. Medical evaluation recommended. Only light movement (walking) if pain-free."
         else:
-            result.description = f"Schmerz sehr hoch ({pain_score}/10). Ärztliche Abklärung empfohlen. Nur leichte Bewegung (Spaziergang) falls schmerzfrei."
+            result.description = f"Pain very high ({pain_score}/10). Medical evaluation recommended. Only light movement (walking) if pain-free."
 
     return result
 
@@ -85,22 +93,26 @@ def evaluate_r0_acute_pain(
 def evaluate_r1_moderate_pain_impact(
     pain_score: int,
     planned_sport: SportType,
+    config: Optional[SafetyRulesConfig] = None,
 ) -> SafetyRuleResult:
     """
-    R1 – Schmerz moderat + Impact-Sport
-    Schmerz 5–6/10 → kein Impact-/Kontakt-Sport
+    R1 – Moderate pain + Impact sport
+    Pain in configured range → no impact/contact sports
     """
+    if config is None:
+        config = get_scoring_config().safety_rules
+
     result = SafetyRuleResult(
         rule_id="R1",
         rule_name="Moderate Pain - No Impact Sports",
         description="",
     )
 
-    if 5 <= pain_score <= 6:
+    if config.r1_pain_min <= pain_score <= config.r1_pain_max:
         result.triggered = True
         result.blocked_sports = HIGH_IMPACT_SPORTS
         result.max_allowed_intensity = IntensityZone.Z2
-        result.description = f"Moderater Schmerz ({pain_score}/10). Kein Impact-Sport empfohlen. Alternativen: Bike Z1-Z2, Schwimmen locker, Mobility."
+        result.description = f"Moderate pain ({pain_score}/10). No impact sports recommended. Alternatives: Bike Z1-Z2, easy swimming, mobility."
 
         # If planned sport is high impact, suggest yellow
         if planned_sport in HIGH_IMPACT_SPORTS:
@@ -113,12 +125,16 @@ def evaluate_r2_doms(
     soreness_map: dict[str, int],
     planned_sport: SportType,
     planned_gym_split: Optional[GymSplit],
+    config: Optional[SafetyRulesConfig] = None,
 ) -> SafetyRuleResult:
     """
-    R2 – Lokaler Muskelkater stark
-    DOMS ≥ 7/10 in primärer Muskelgruppe der geplanten Session
-    → keine harte Belastung dieser Gruppe
+    R2 – Severe local muscle soreness
+    DOMS >= threshold in primary muscle group of planned session
+    → no hard loading of this group
     """
+    if config is None:
+        config = get_scoring_config().safety_rules
+
     result = SafetyRuleResult(
         rule_id="R2",
         rule_name="DOMS - Muscle Group Protection",
@@ -136,14 +152,14 @@ def evaluate_r2_doms(
     for muscle in target_muscles:
         muscle_key = muscle.value if isinstance(muscle, MuscleRegion) else muscle
         soreness_level = soreness_map.get(muscle_key, 0)
-        if soreness_level >= 7:
+        if soreness_level >= config.r2_doms_threshold:
             high_soreness_muscles.append(muscle)
             result.blocked_muscle_regions.append(muscle)
 
     if high_soreness_muscles:
         result.triggered = True
         muscle_names = ", ".join([m.value for m in high_soreness_muscles])
-        result.description = f"Starker Muskelkater in {muscle_names}. Keine harte Belastung dieser Muskelgruppen empfohlen."
+        result.description = f"Severe muscle soreness in {muscle_names}. No hard loading of these muscle groups recommended."
         result.override_risk_level = RiskLevel.YELLOW
 
     return result
@@ -152,12 +168,16 @@ def evaluate_r2_doms(
 def evaluate_r3_recovery_markers(
     hrv_z: Optional[float],
     rhr_delta: Optional[float],
+    config: Optional[SafetyRulesConfig] = None,
 ) -> SafetyRuleResult:
     """
-    R3 – Recovery-Marker massiv schlecht
-    HRV deutlich reduziert UND Ruhepuls erhöht
-    → Intensität runterstufen, max Z2
+    R3 – Severely poor recovery markers
+    HRV significantly reduced AND resting heart rate elevated
+    → reduce intensity, max Z2
     """
+    if config is None:
+        config = get_scoring_config().safety_rules
+
     result = SafetyRuleResult(
         rule_id="R3",
         rule_name="Poor Recovery Markers",
@@ -165,24 +185,24 @@ def evaluate_r3_recovery_markers(
     )
 
     # Check if both markers indicate poor recovery
-    hrv_poor = hrv_z is not None and hrv_z < -1.5  # 1.5 std below baseline
-    rhr_elevated = rhr_delta is not None and rhr_delta > 5  # 5 bpm above baseline
+    hrv_poor = hrv_z is not None and hrv_z < config.r3_hrv_z_threshold
+    rhr_elevated = rhr_delta is not None and rhr_delta > config.r3_rhr_delta_threshold
 
     if hrv_poor and rhr_elevated:
         result.triggered = True
         result.max_allowed_intensity = IntensityZone.Z2
-        result.description = "HRV deutlich unter Baseline und Ruhepuls erhöht. Keine hochintensive Belastung empfohlen. Max. Zone 2."
+        result.description = "HRV significantly below baseline and resting heart rate elevated. No high-intensity training recommended. Max Zone 2."
         result.override_risk_level = RiskLevel.YELLOW
     elif hrv_poor or rhr_elevated:
         # Single marker warning (less severe)
         if hrv_poor:
             result.triggered = True
             result.max_allowed_intensity = IntensityZone.TEMPO
-            result.description = "HRV deutlich unter Baseline. Hochintensive Belastung mit Vorsicht."
+            result.description = "HRV significantly below baseline. High-intensity training with caution."
         elif rhr_elevated:
             result.triggered = True
             result.max_allowed_intensity = IntensityZone.TEMPO
-            result.description = "Ruhepuls erhöht. Hochintensive Belastung mit Vorsicht."
+            result.description = "Resting heart rate elevated. High-intensity training with caution."
 
     return result
 
@@ -193,8 +213,8 @@ def evaluate_r4_two_a_day(
 ) -> SafetyRuleResult:
     """
     R4 – Two-a-days Limit
-    Bereits harte Einheit am selben Tag + geplante harte Einheit
-    → zweite Einheit automatisch "easy" oder sportartwechselnd
+    Already completed hard session same day + planned hard session
+    → second session automatically "easy" or different sport
     """
     result = SafetyRuleResult(
         rule_id="R4",
@@ -208,7 +228,7 @@ def evaluate_r4_two_a_day(
     if hard_session_today and planned_intensity in hard_intensities:
         result.triggered = True
         result.max_allowed_intensity = IntensityZone.Z2
-        result.description = "Bereits eine harte Einheit heute absolviert. Zweite Einheit sollte leicht sein (max. Zone 2) oder eine andere Sportart."
+        result.description = "Already completed a hard session today. Second session should be easy (max Zone 2) or a different sport."
         result.override_risk_level = RiskLevel.YELLOW
 
     return result
@@ -224,28 +244,31 @@ def evaluate_all_safety_rules(
     hrv_z: Optional[float],
     rhr_delta: Optional[float],
     hard_session_today: bool,
+    config: Optional[SafetyRulesConfig] = None,
 ) -> SafetyEvaluation:
     """Evaluate all safety rules and return combined result."""
+    if config is None:
+        config = get_scoring_config().safety_rules
 
     results = []
 
     # R0 - Acute pain/swelling
-    r0 = evaluate_r0_acute_pain(pain_score, swelling)
+    r0 = evaluate_r0_acute_pain(pain_score, swelling, config)
     if r0.triggered:
         results.append(r0)
 
     # R1 - Moderate pain + impact sport
-    r1 = evaluate_r1_moderate_pain_impact(pain_score, planned_sport)
+    r1 = evaluate_r1_moderate_pain_impact(pain_score, planned_sport, config)
     if r1.triggered:
         results.append(r1)
 
     # R2 - DOMS
-    r2 = evaluate_r2_doms(soreness_map, planned_sport, planned_gym_split)
+    r2 = evaluate_r2_doms(soreness_map, planned_sport, planned_gym_split, config)
     if r2.triggered:
         results.append(r2)
 
     # R3 - Recovery markers
-    r3 = evaluate_r3_recovery_markers(hrv_z, rhr_delta)
+    r3 = evaluate_r3_recovery_markers(hrv_z, rhr_delta, config)
     if r3.triggered:
         results.append(r3)
 

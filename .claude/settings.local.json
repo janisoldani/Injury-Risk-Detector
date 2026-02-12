@@ -21,7 +21,9 @@
       "Bash(docker-compose up:*)",
       "Bash(docker compose:*)",
       "Bash(npm install:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(pip install pytest pytest-asyncio --quiet)",
+      "Bash(python -m pytest tests/test_features.py -v --tb=short)"
     ]
   }
 }
